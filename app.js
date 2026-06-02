@@ -188,6 +188,7 @@ function printerDepreciationPerHour(printer) {
 }
 
 function calculateComponent(component) {
+  component.markup = num(state.settings.defaultMarkup);
   const material = state.materials.find((item) => item.id === component.materialId);
   const printer = state.printers.find((item) => item.id === component.printerId);
   const adminCommunication = numWithDefault(component.adminCommunication, 5);
@@ -754,7 +755,7 @@ function createBlankComponent(name = "COMPONENT 1", options = {}) {
     additionalWork: 0,
     adminCommunication: useLabourDefaults ? 5 : 0,
     consumables: 0,
-    markup: useDefaultMarkup ? state.settings.defaultMarkup : 0,
+    markup: num(state.settings.defaultMarkup),
     gcodeFileName: "",
     gcodeImportSummary: "",
     gcodeFile: null,
@@ -791,7 +792,7 @@ els.descriptionInput.addEventListener("input", () => {
     state.settings[stateKey] = ["energyCost", "laborCost"].includes(stateKey) ? parseCurrencyInput(els[elementKey].value) : num(els[elementKey].value);
     if (stateKey === "defaultMarkup") {
       state.components.forEach((component) => {
-        if (!component.markup) component.markup = state.settings.defaultMarkup;
+        component.markup = state.settings.defaultMarkup;
       });
     }
     refreshCalculatedViews();
@@ -895,7 +896,7 @@ els.resetBtn.addEventListener("click", () => {
     createBlankComponent("COMPONENT 1", {
       useLabourDefaults: false,
       useSetupSelections: false,
-      useDefaultMarkup: false,
+      useDefaultMarkup: true,
     }),
   ];
   render();
