@@ -19,6 +19,7 @@
         <nav class="tabs" aria-label="App sections">
           <button class="tab active" data-view="quote" type="button">Quote</button>
           <button class="tab" data-view="catalogs" type="button">Setup</button>
+          <button class="tab" data-view="business" type="button">Business Setup</button>
         </nav>
         <div class="quote-total">
           <span>Quoted Price</span>
@@ -34,23 +35,51 @@
               <h2>Multi-Part Quote</h2>
             </div>
             <div class="actions">
+              <button id="exportPdfBtn" class="secondary" type="button">Export PDF</button>
               <button id="addComponentBtn" class="secondary" type="button">Add part</button>
-              <button id="resetBtn" class="ghost" type="button">Reset</button>
+              <button id="resetBtn" class="ghost" type="button">Reset form</button>
             </div>
           </header>
 
           <section class="details-panel">
             <label>
-              Customer
+              Document type
+              <select id="documentTypeInput">
+                <option value="quote">Quote / Estimate</option>
+                <option value="invoice">Invoice</option>
+              </select>
+            </label>
+            <label>
+              Client name
               <input id="customerInput" type="text" placeholder="Customer name" />
             </label>
             <label>
               Date
               <input id="dateInput" type="date" />
             </label>
+            <label>
+              Client email
+              <input id="clientEmailInput" type="email" placeholder="client@example.com" />
+            </label>
+            <label>
+              Client phone
+              <input id="clientPhoneInput" type="tel" placeholder="Phone number" />
+            </label>
+            <label>
+              Reference
+              <input id="documentNumberInput" type="text" placeholder="Quote or invoice number" />
+            </label>
             <label class="wide">
               Description
               <input id="descriptionInput" type="text" placeholder="Short job description" />
+            </label>
+            <label class="wide">
+              Client address
+              <textarea id="clientAddressInput" rows="3" placeholder="Client billing or delivery address"></textarea>
+            </label>
+            <label class="wide">
+              Job notes
+              <textarea id="jobNotesInput" rows="3" placeholder="Internal or customer-facing job notes"></textarea>
             </label>
           </section>
 
@@ -92,20 +121,28 @@
               </div>
               <section class="settings-grid inline-settings">
                 <label>
-                  Energy cost (R/kWh)
+                  <span class="help-heading">Energy cost (R/kWh) <button id="energyCostHelpBtn" class="help-button" type="button" aria-label="Explain energy cost">?</button></span>
                   <input id="energyCostInput" inputmode="decimal" />
                 </label>
                 <label>
-                  Labor cost (R/h)
+                  <span class="help-heading">Labor cost (R/h) <button id="laborCostHelpBtn" class="help-button" type="button" aria-label="Explain labor cost">?</button></span>
                   <input id="laborCostInput" inputmode="decimal" />
                 </label>
                 <label>
-                  Failure rate (%)
+                  <span class="help-heading">CAD design cost (R/h) <button id="cadCostHelpBtn" class="help-button" type="button" aria-label="Explain CAD design cost">?</button></span>
+                  <input id="cadCostInput" inputmode="decimal" />
+                </label>
+                <label>
+                  <span class="help-heading">Failure rate (%) <button id="failureRateHelpBtn" class="help-button" type="button" aria-label="Explain failure rate">?</button></span>
                   <input id="failureRateInput" type="number" min="0" max="100" step="1" />
                 </label>
                 <label>
                   Default markup (%)
                   <input id="defaultMarkupInput" type="number" min="0" step="1" />
+                </label>
+                <label>
+                  Setup fee (R)
+                  <input id="setupFeeInput" inputmode="decimal" />
                 </label>
               </section>
             </section>
@@ -166,6 +203,64 @@
             </section>
           </div>
         </section>
+
+        <section class="view" id="businessView">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Document details</p>
+              <h2>Business Setup</h2>
+            </div>
+          </header>
+          <div class="catalog-layout">
+            <section class="table-panel">
+              <div class="section-title">
+                <h3>Supplier Details</h3>
+                <span>Used on quotes and invoices</span>
+              </div>
+              <section class="settings-grid inline-settings">
+                <label>
+                  Business name
+                  <input id="supplierNameInput" type="text" placeholder="Your business name" />
+                </label>
+                <label>
+                  Business email
+                  <input id="supplierEmailInput" type="email" placeholder="you@example.com" />
+                </label>
+                <label>
+                  Business phone
+                  <input id="supplierPhoneInput" type="tel" placeholder="Phone number" />
+                </label>
+                <label>
+                  VAT number
+                  <input id="vatNumberInput" type="text" placeholder="VAT registration number" />
+                </label>
+                <label>
+                  VAT rate (%)
+                  <input id="vatRateInput" type="number" min="0" step="0.1" />
+                </label>
+                <label>
+                  VAT enabled
+                  <select id="vatEnabledInput">
+                    <option value="no">No VAT</option>
+                    <option value="yes">Add VAT</option>
+                  </select>
+                </label>
+                <label class="wide">
+                  Business address
+                  <textarea id="supplierAddressInput" rows="3" placeholder="Business address"></textarea>
+                </label>
+                <label class="wide">
+                  Payment / quote notes
+                  <textarea id="supplierNotesInput" rows="3" placeholder="Bank details, payment terms, quote validity, or collection details"></textarea>
+                </label>
+                <label class="wide">
+                  Banking details
+                  <textarea id="bankingDetailsInput" rows="3" placeholder="Bank, account name, account number, branch code, payment reference"></textarea>
+                </label>
+              </section>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -203,6 +298,8 @@
       <button id="toastCloseBtn" class="toast-close" type="button" aria-label="Close help">×</button>
       <div id="toastContent"></div>
     </div>
+
+    <section id="printDocument" class="print-document" aria-label="Printable quote document"></section>
 
     <template id="componentTemplate">
       <article class="component-card">
@@ -272,8 +369,16 @@
             <input class="admin-communication-input" type="number" min="0" step="1" title="Time spent quoting, messaging the customer, arranging payment, collection, or delivery." />
           </label>
           <label>
+            CAD design (min)
+            <input class="cad-design-input" type="number" min="0" step="1" title="Optional time spent creating, modifying, repairing, or preparing CAD/model files for this job." />
+          </label>
+          <label>
             Consumables (R)
             <input class="consumables-input" type="number" min="0" step="1" />
+          </label>
+          <label>
+            Setup fee (R)
+            <input class="setup-fee-input" inputmode="decimal" readonly />
           </label>
           <label>
             Markup (%)

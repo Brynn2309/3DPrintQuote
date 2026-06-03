@@ -4,13 +4,30 @@ const defaultState = {
   settings: {
     energyCost: 0,
     laborCost: 0,
+    cadCost: 0,
     failureRate: 0,
     defaultMarkup: 0,
+    setupFee: 0,
+    supplierName: "",
+    supplierEmail: "",
+    supplierPhone: "",
+    supplierAddress: "",
+    supplierNotes: "",
+    bankingDetails: "",
+    vatEnabled: false,
+    vatRate: 15,
+    vatNumber: "",
   },
   quote: {
+    documentType: "quote",
+    documentNumber: "",
     customer: "",
+    clientEmail: "",
+    clientPhone: "",
+    clientAddress: "",
     date: new Date().toISOString().slice(0, 10),
     description: "",
+    jobNotes: "",
   },
   materials: [],
   printers: [],
@@ -30,6 +47,7 @@ const defaultState = {
       supportRemoval: 0,
       additionalWork: 0,
       adminCommunication: 5,
+      cadDesign: 0,
       consumables: 0,
       markup: 0,
       gcodeFileName: "",
@@ -96,9 +114,16 @@ const els = {
   tabs: document.querySelectorAll(".tab"),
   views: document.querySelectorAll(".view"),
   sidebarQuotedPrice: document.getElementById("sidebarQuotedPrice"),
+  documentTypeInput: document.getElementById("documentTypeInput"),
+  documentNumberInput: document.getElementById("documentNumberInput"),
   customerInput: document.getElementById("customerInput"),
+  clientEmailInput: document.getElementById("clientEmailInput"),
+  clientPhoneInput: document.getElementById("clientPhoneInput"),
+  clientAddressInput: document.getElementById("clientAddressInput"),
   dateInput: document.getElementById("dateInput"),
   descriptionInput: document.getElementById("descriptionInput"),
+  jobNotesInput: document.getElementById("jobNotesInput"),
+  exportPdfBtn: document.getElementById("exportPdfBtn"),
   componentsGrid: document.getElementById("componentsGrid"),
   componentCount: document.getElementById("componentCount"),
   summaryStats: document.getElementById("summaryStats"),
@@ -122,10 +147,26 @@ const els = {
   toastContent: document.getElementById("toastContent"),
   toastCloseBtn: document.getElementById("toastCloseBtn"),
   resetBtn: document.getElementById("resetBtn"),
+  energyCostHelpBtn: document.getElementById("energyCostHelpBtn"),
+  laborCostHelpBtn: document.getElementById("laborCostHelpBtn"),
+  cadCostHelpBtn: document.getElementById("cadCostHelpBtn"),
+  failureRateHelpBtn: document.getElementById("failureRateHelpBtn"),
   energyCostInput: document.getElementById("energyCostInput"),
   laborCostInput: document.getElementById("laborCostInput"),
+  cadCostInput: document.getElementById("cadCostInput"),
   failureRateInput: document.getElementById("failureRateInput"),
   defaultMarkupInput: document.getElementById("defaultMarkupInput"),
+  setupFeeInput: document.getElementById("setupFeeInput"),
+  supplierNameInput: document.getElementById("supplierNameInput"),
+  supplierEmailInput: document.getElementById("supplierEmailInput"),
+  supplierPhoneInput: document.getElementById("supplierPhoneInput"),
+  supplierAddressInput: document.getElementById("supplierAddressInput"),
+  supplierNotesInput: document.getElementById("supplierNotesInput"),
+  bankingDetailsInput: document.getElementById("bankingDetailsInput"),
+  vatEnabledInput: document.getElementById("vatEnabledInput"),
+  vatRateInput: document.getElementById("vatRateInput"),
+  vatNumberInput: document.getElementById("vatNumberInput"),
+  printDocument: document.getElementById("printDocument"),
   componentTemplate: document.getElementById("componentTemplate"),
 };
 
@@ -135,6 +176,8 @@ const costColors = {
   depreciation: "#848b8f",
   preparation: "#dfad00",
   postProcessing: "#5b8eb9",
+  cadDesign: "#b46cc8",
+  setupFee: "#7f6a55",
   consumables: "#6d9d3d",
   scrap: "#6285c6",
   markup: "#f18842",
@@ -189,6 +232,7 @@ function printerDepreciationPerHour(printer) {
 
 function calculateComponent(component) {
   component.markup = num(state.settings.defaultMarkup);
+  component.setupFee = num(state.settings.setupFee);
   const material = state.materials.find((item) => item.id === component.materialId);
   const printer = state.printers.find((item) => item.id === component.printerId);
   const adminCommunication = numWithDefault(component.adminCommunication, 5);
@@ -200,8 +244,11 @@ function calculateComponent(component) {
   const depreciation = num(component.printHours) * printerDepreciationPerHour(printer);
   const preparation = ((preparationMinutes + num(component.materialChange)) / 60) * num(state.settings.laborCost);
   const postProcessing = (postProcessingMinutes / 60) * num(state.settings.laborCost);
+  const cadDesignMinutes = num(component.cadDesign);
+  const cadDesign = (cadDesignMinutes / 60) * num(state.settings.cadCost);
   const consumables = num(component.consumables);
-  const subtotal = filament + electricity + depreciation + preparation + postProcessing + consumables;
+  const setupFee = num(component.setupFee);
+  const subtotal = filament + electricity + depreciation + preparation + postProcessing + cadDesign + consumables + setupFee;
   const scrap = subtotal * (num(state.settings.failureRate) / 100);
   const withFailures = subtotal + scrap;
   const markup = withFailures * (num(component.markup) / 100);
@@ -213,12 +260,15 @@ function calculateComponent(component) {
     preparationMinutes,
     postProcessingMinutes,
     totalLabourMinutes,
+    cadDesignMinutes,
     filament,
     electricity,
     depreciation,
     preparation,
     postProcessing,
+    cadDesign,
     consumables,
+    setupFee,
     subtotal,
     scrap,
     withFailures,
@@ -228,7 +278,7 @@ function calculateComponent(component) {
 }
 
 function calculateTotals() {
-  return state.components.map(calculateComponent).reduce(
+  const totals = state.components.map(calculateComponent).reduce(
     (totals, item) => {
       Object.keys(totals).forEach((key) => {
         totals[key] += item[key] || 0;
@@ -241,12 +291,15 @@ function calculateTotals() {
       preparationMinutes: 0,
       postProcessingMinutes: 0,
       totalLabourMinutes: 0,
+      cadDesignMinutes: 0,
       filament: 0,
       electricity: 0,
       depreciation: 0,
       preparation: 0,
       postProcessing: 0,
+      cadDesign: 0,
       consumables: 0,
+      setupFee: 0,
       subtotal: 0,
       scrap: 0,
       withFailures: 0,
@@ -254,6 +307,13 @@ function calculateTotals() {
       quoted: 0,
     }
   );
+  totals.vat = 0;
+  totals.totalDue = totals.quoted;
+  if (state.settings.vatEnabled) {
+    totals.vat = totals.quoted * (num(state.settings.vatRate) / 100);
+    totals.totalDue = totals.quoted + totals.vat;
+  }
+  return totals;
 }
 
 function render() {
@@ -266,9 +326,15 @@ function render() {
 }
 
 function renderQuoteDetails() {
+  els.documentTypeInput.value = state.quote.documentType || "quote";
+  els.documentNumberInput.value = state.quote.documentNumber || "";
   els.customerInput.value = state.quote.customer;
+  els.clientEmailInput.value = state.quote.clientEmail || "";
+  els.clientPhoneInput.value = state.quote.clientPhone || "";
+  els.clientAddressInput.value = state.quote.clientAddress || "";
   els.dateInput.value = state.quote.date;
   els.descriptionInput.value = state.quote.description;
+  els.jobNotesInput.value = state.quote.jobNotes || "";
 }
 
 function renderComponents() {
@@ -293,7 +359,9 @@ function renderComponents() {
     bindField(card, ".support-removal-input", component.supportRemoval, "supportRemoval");
     bindField(card, ".additional-work-input", component.additionalWork, "additionalWork");
     bindField(card, ".admin-communication-input", component.adminCommunication ?? 5, "adminCommunication");
+    bindField(card, ".cad-design-input", component.cadDesign || 0, "cadDesign");
     bindField(card, ".consumables-input", component.consumables, "consumables");
+    bindField(card, ".setup-fee-input", formatCurrencyInput(state.settings.setupFee), "setupFee");
     bindField(card, ".markup-input", component.markup, "markup");
     bindGcodeUpload(card, component);
 
@@ -585,17 +653,20 @@ function positionToast(anchor) {
 
 function renderSummary() {
   const totals = calculateTotals();
-  els.sidebarQuotedPrice.textContent = money(totals.quoted);
+  els.sidebarQuotedPrice.textContent = money(totals.totalDue);
   const rows = [
     ["Weight", `${totals.weight.toFixed(1)} g`],
     ["Printing time", `${totals.printHours.toFixed(2)} h`],
     ["Active labour", `${totals.totalLabourMinutes.toFixed(0)} min`],
     ["Preparation/admin", `${totals.preparationMinutes.toFixed(0)} min`],
     ["Post-processing", `${totals.postProcessingMinutes.toFixed(0)} min`],
+    ["CAD design", `${totals.cadDesignMinutes.toFixed(0)} min`],
+    ["Setup fee", money(totals.setupFee)],
     ["Subtotal", money(totals.subtotal)],
     ["Including failures", money(totals.withFailures)],
     ["Suggested price", money(totals.quoted)],
-    ["Quoted price", money(totals.quoted), "highlight"],
+    ...(state.settings.vatEnabled ? [["VAT", money(totals.vat)]] : []),
+    ["Quoted price", money(totals.totalDue), "highlight"],
   ];
 
   els.summaryStats.innerHTML = rows
@@ -610,6 +681,8 @@ function refreshCalculatedViews() {
     const component = state.components.find((item) => item.id === card.dataset.id);
     if (!component) return;
     const totals = calculateComponent(component);
+    const setupFeeInput = card.querySelector(".setup-fee-input");
+    if (setupFeeInput) setupFeeInput.value = formatCurrencyInput(state.settings.setupFee);
     card.querySelector(".subtotal-output").textContent = money(totals.subtotal);
     card.querySelector(".failure-output").textContent = money(totals.withFailures);
     card.querySelector(".quoted-output").textContent = money(totals.quoted);
@@ -625,6 +698,8 @@ function renderBreakdown(totals) {
     ["Printer depreciation", totals.depreciation, costColors.depreciation],
     ["Preparation", totals.preparation, costColors.preparation],
     ["Post-processing", totals.postProcessing, costColors.postProcessing],
+    ["CAD design", totals.cadDesign, costColors.cadDesign],
+    ["Setup fee", totals.setupFee, costColors.setupFee],
     ["Consumables", totals.consumables, costColors.consumables],
     ["Scrap", totals.scrap, costColors.scrap],
     ["Mark-up", totals.markup, costColors.markup],
@@ -715,8 +790,19 @@ function updateCatalogCalculatedFields(row, item) {
 function renderSettings() {
   els.energyCostInput.value = formatCurrencyInput(state.settings.energyCost);
   els.laborCostInput.value = formatCurrencyInput(state.settings.laborCost);
+  els.cadCostInput.value = formatCurrencyInput(state.settings.cadCost);
   els.failureRateInput.value = state.settings.failureRate;
   els.defaultMarkupInput.value = state.settings.defaultMarkup;
+  els.setupFeeInput.value = formatCurrencyInput(state.settings.setupFee);
+  els.supplierNameInput.value = state.settings.supplierName || "";
+  els.supplierEmailInput.value = state.settings.supplierEmail || "";
+  els.supplierPhoneInput.value = state.settings.supplierPhone || "";
+  els.supplierAddressInput.value = state.settings.supplierAddress || "";
+  els.supplierNotesInput.value = state.settings.supplierNotes || "";
+  els.bankingDetailsInput.value = state.settings.bankingDetails || "";
+  els.vatEnabledInput.value = state.settings.vatEnabled ? "yes" : "no";
+  els.vatRateInput.value = state.settings.vatRate;
+  els.vatNumberInput.value = state.settings.vatNumber || "";
 }
 
 function escapeHtml(value) {
@@ -729,6 +815,121 @@ function formatCurrencyInput(value) {
 
 function parseCurrencyInput(value) {
   return num(String(value).replace(/[^\d.-]/g, ""));
+}
+
+function nl2br(value) {
+  return escapeHtml(value || "").replace(/\n/g, "<br>");
+}
+
+function documentTitle() {
+  return state.quote.documentType === "invoice" ? "Invoice" : "Quote / Estimate";
+}
+
+function buildPrintDocument() {
+  const totals = calculateTotals();
+  const printRunningCost = totals.filament + totals.electricity + totals.depreciation + totals.consumables;
+  const labourCost = totals.preparation + totals.postProcessing;
+  const lineItems = [
+    {
+      item: "Print time, material and machine use",
+      details: `${totals.printHours.toFixed(2)} print hours / ${totals.weight.toFixed(1)} g material`,
+      amount: printRunningCost,
+    },
+    {
+      item: "Active labour",
+      details: `${totals.totalLabourMinutes.toFixed(0)} minutes preparation, setup, removal and admin`,
+      amount: labourCost,
+    },
+  ];
+
+  if (totals.cadDesign > 0 || totals.cadDesignMinutes > 0) {
+    lineItems.push({
+      item: "CAD design",
+      details: `${totals.cadDesignMinutes.toFixed(0)} minutes CAD/model work`,
+      amount: totals.cadDesign,
+    });
+  }
+
+  if (totals.setupFee > 0) {
+    lineItems.push({
+      item: "Setup fee",
+      details: `Applied per component across ${state.components.length} part${state.components.length === 1 ? "" : "s"}`,
+      amount: totals.setupFee,
+    });
+  }
+
+  const documentNumber = state.quote.documentNumber || `${state.quote.documentType === "invoice" ? "INV" : "QUOTE"}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+
+  els.printDocument.innerHTML = `
+    <div class="print-header">
+      <div>
+        <h1>${escapeHtml(documentTitle())}</h1>
+        <div class="print-meta">
+          <strong>${escapeHtml(documentNumber)}</strong><br>
+          Date: ${escapeHtml(state.quote.date || "")}
+        </div>
+      </div>
+      <div class="print-party print-number">
+        <strong>${escapeHtml(state.settings.supplierName || "Supplier")}</strong><br>
+        ${escapeHtml(state.settings.supplierEmail || "")}<br>
+        ${escapeHtml(state.settings.supplierPhone || "")}<br>
+        ${state.settings.vatNumber ? `VAT: ${escapeHtml(state.settings.vatNumber)}<br>` : ""}
+        ${nl2br(state.settings.supplierAddress || "")}
+      </div>
+    </div>
+
+    <div class="print-parties">
+      <div class="print-party">
+        <h2>Client</h2>
+        <strong>${escapeHtml(state.quote.customer || "Client")}</strong><br>
+        ${escapeHtml(state.quote.clientEmail || "")}<br>
+        ${escapeHtml(state.quote.clientPhone || "")}<br>
+        ${nl2br(state.quote.clientAddress || "")}
+      </div>
+      <div class="print-party">
+        <h2>Job</h2>
+        ${nl2br(state.quote.description || "3D printing job")}
+        ${state.quote.jobNotes ? `<br><br><strong>Job notes:</strong><br>${nl2br(state.quote.jobNotes)}` : ""}
+      </div>
+    </div>
+
+    <div class="print-items">
+      <h2>Items</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Line item</th>
+            <th>Details</th>
+            <th class="print-number">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lineItems
+            .map((item) => {
+              return `
+                <tr>
+                  <td>${escapeHtml(item.item)}</td>
+                  <td>${escapeHtml(item.details)}</td>
+                  <td class="print-number">${money(item.amount)}</td>
+                </tr>
+              `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="print-total">
+      <div class="print-total-row"><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div>
+      <div class="print-total-row"><span>Failure allowance</span><strong>${money(totals.scrap)}</strong></div>
+      <div class="print-total-row"><span>Markup</span><strong>${money(totals.markup)}</strong></div>
+      ${state.settings.vatEnabled ? `<div class="print-total-row"><span>VAT (${num(state.settings.vatRate)}%)</span><strong>${money(totals.vat)}</strong></div>` : ""}
+      <div class="print-total-row final"><span>Total</span><strong>${money(totals.totalDue)}</strong></div>
+    </div>
+
+    ${state.settings.bankingDetails ? `<div class="print-notes"><h2>Banking Details</h2>${nl2br(state.settings.bankingDetails)}</div>` : ""}
+    ${state.settings.supplierNotes ? `<div class="print-notes"><h2>Notes</h2>${nl2br(state.settings.supplierNotes)}</div>` : ""}
+  `;
 }
 
 function makeId(prefix) {
@@ -754,8 +955,10 @@ function createBlankComponent(name = "COMPONENT 1", options = {}) {
     materialChange: 0,
     additionalWork: 0,
     adminCommunication: useLabourDefaults ? 5 : 0,
+    cadDesign: 0,
     consumables: 0,
     markup: num(state.settings.defaultMarkup),
+    setupFee: num(state.settings.setupFee),
     gcodeFileName: "",
     gcodeImportSummary: "",
     gcodeFile: null,
@@ -773,33 +976,91 @@ els.customerInput.addEventListener("input", () => {
   state.quote.customer = els.customerInput.value;
   saveState();
 });
+els.documentTypeInput.addEventListener("input", () => {
+  state.quote.documentType = els.documentTypeInput.value;
+  saveState();
+});
+els.documentNumberInput.addEventListener("input", () => {
+  state.quote.documentNumber = els.documentNumberInput.value;
+  saveState();
+});
+els.clientEmailInput.addEventListener("input", () => {
+  state.quote.clientEmail = els.clientEmailInput.value;
+  saveState();
+});
+els.clientPhoneInput.addEventListener("input", () => {
+  state.quote.clientPhone = els.clientPhoneInput.value;
+  saveState();
+});
+els.clientAddressInput.addEventListener("input", () => {
+  state.quote.clientAddress = els.clientAddressInput.value;
+  saveState();
+});
 els.dateInput.addEventListener("input", () => {
   state.quote.date = els.dateInput.value;
   saveState();
+});
+
+[
+  ["supplierNameInput", "supplierName"],
+  ["supplierEmailInput", "supplierEmail"],
+  ["supplierPhoneInput", "supplierPhone"],
+  ["supplierAddressInput", "supplierAddress"],
+  ["supplierNotesInput", "supplierNotes"],
+  ["bankingDetailsInput", "bankingDetails"],
+  ["vatNumberInput", "vatNumber"],
+].forEach(([elementKey, stateKey]) => {
+  els[elementKey].addEventListener("input", () => {
+    state.settings[stateKey] = els[elementKey].value;
+    saveState();
+  });
+});
+
+els.vatEnabledInput.addEventListener("input", () => {
+  state.settings.vatEnabled = els.vatEnabledInput.value === "yes";
+  refreshCalculatedViews();
+});
+
+els.vatRateInput.addEventListener("input", () => {
+  state.settings.vatRate = num(els.vatRateInput.value);
+  refreshCalculatedViews();
 });
 els.descriptionInput.addEventListener("input", () => {
   state.quote.description = els.descriptionInput.value;
   saveState();
 });
 
+els.jobNotesInput.addEventListener("input", () => {
+  state.quote.jobNotes = els.jobNotesInput.value;
+  saveState();
+});
+
+els.exportPdfBtn.addEventListener("click", () => {
+  buildPrintDocument();
+  window.print();
+});
+
 [
   ["energyCostInput", "energyCost"],
   ["laborCostInput", "laborCost"],
+  ["cadCostInput", "cadCost"],
   ["failureRateInput", "failureRate"],
   ["defaultMarkupInput", "defaultMarkup"],
+  ["setupFeeInput", "setupFee"],
 ].forEach(([elementKey, stateKey]) => {
   els[elementKey].addEventListener("input", () => {
-    state.settings[stateKey] = ["energyCost", "laborCost"].includes(stateKey) ? parseCurrencyInput(els[elementKey].value) : num(els[elementKey].value);
+    state.settings[stateKey] = ["energyCost", "laborCost", "cadCost", "setupFee"].includes(stateKey) ? parseCurrencyInput(els[elementKey].value) : num(els[elementKey].value);
     if (stateKey === "defaultMarkup") {
       state.components.forEach((component) => {
         component.markup = state.settings.defaultMarkup;
       });
     }
+    if (stateKey === "setupFee") state.components.forEach((component) => { component.setupFee = state.settings.setupFee; });
     refreshCalculatedViews();
   });
 
   els[elementKey].addEventListener("blur", () => {
-    if (!["energyCost", "laborCost"].includes(stateKey)) return;
+    if (!["energyCost", "laborCost", "cadCost", "setupFee"].includes(stateKey)) return;
     els[elementKey].value = formatCurrencyInput(state.settings[stateKey]);
   });
 });
@@ -841,6 +1102,34 @@ els.serviceCostHelpBtn.addEventListener("click", () => {
     <strong>Service cost</strong>
     Estimate the maintenance you expect over the printer's useful life: nozzles, build plates, belts, fans, hotend or extruder parts, resin films/screens, and repairs. The app uses (printer price + service cost) / life hours. If Life h is 0, depreciation stays R0.00.
   `, els.serviceCostHelpBtn);
+});
+
+els.energyCostHelpBtn.addEventListener("click", () => {
+  showToast(`
+    <strong>Energy cost</strong>
+    This is the Rand cost for 1 kWh of electricity. As of June 2026 in South Africa, tariffs vary by municipality, prepaid/block tariff, VAT, and whether the customer buys directly from Eskom. R3.50/kWh is used as a practical editable planning estimate for community quoting: it is above the national FBE benchmark rate of about R2.38/kWh and allows for municipal retail markups after the 2026/27 Eskom/NERSA tariff increases. For best accuracy, use the R/kWh shown on your own electricity bill or prepaid purchase.
+  `, els.energyCostHelpBtn);
+});
+
+els.laborCostHelpBtn.addEventListener("click", () => {
+  showToast(`
+    <strong>Labor cost</strong>
+    This is your hourly rate for active human work, not passive print time. The app applies it only to labour fields such as preparation, slicing, printer setup/start, job removal, support removal, material changes, additional work, and admin/communication.
+  `, els.laborCostHelpBtn);
+});
+
+els.cadCostHelpBtn.addEventListener("click", () => {
+  showToast(`
+    <strong>CAD design cost</strong>
+    This is the hourly rate for optional design/model work such as creating a part, modifying a model, repairing files, adding text/logos, or preparing customer geometry. It only affects a quote when CAD design minutes are entered on the quote card.
+  `, els.cadCostHelpBtn);
+});
+
+els.failureRateHelpBtn.addEventListener("click", () => {
+  showToast(`
+    <strong>Failure rate</strong>
+    This adds an allowance for failed prints, wasted material, lost electricity, machine time, and rework. For example, a 10% failure rate adds 10% to the calculated subtotal before markup. Use a lower value if your process is very reliable, or a higher value for risky/complex jobs.
+  `, els.failureRateHelpBtn);
 });
 
 els.lifeHoursHelpBtn.addEventListener("click", () => {
@@ -888,9 +1177,15 @@ els.addCustomPrinterBtn.addEventListener("click", () => {
 els.resetBtn.addEventListener("click", () => {
   if (!confirm("Reset the current quote form?")) return;
   state.quote = {
+    documentType: "quote",
+    documentNumber: "",
     customer: "",
+    clientEmail: "",
+    clientPhone: "",
+    clientAddress: "",
     date: new Date().toISOString().slice(0, 10),
     description: "",
+    jobNotes: "",
   };
   state.components = [
     createBlankComponent("COMPONENT 1", {
